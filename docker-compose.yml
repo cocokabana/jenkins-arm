@@ -1,0 +1,18 @@
+version: '3'
+services:
+  jenkins:
+    image: cocokabana/jenkins-rpi:0.0.1
+    ports:
+      - 7000:8080
+      - 50000:50000
+    volumes:
+      - /var/jenkins_home:/var/jenkins_home
+    environment:
+      - "constraint:node==node01"
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
