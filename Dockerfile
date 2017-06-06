@@ -1,58 +1,50 @@
-#FROM kodbasen/java-jdk-arm:jdk-8u111-b14
-FROM dilgerm/rpi-app-base:jessie
-MAINTAINER Martin Dilger <martin@effectivetrainings.de>
+FROM resin/rpi-raspbian:latest
 
-RUN mkdir /var/jenkins_home
-
-ENV JENKINS_HOME /var/jenkins_home
-RUN groupadd -r jenkins && useradd -d $JENKINS_HOME jenkins -g jenkins
-RUN chown -R jenkins /var/jenkins_home
-
-RUN apt-get update
-RUN apt-get install -y wget nodejs npm git unzip
-
-RUN mkdir /var/jenkins_work
-RUN chown -R jenkins /var/jenkins_work
-RUN chown -R jenkins /usr/local
-
-USER jenkins
-WORKDIR /var/jenkins_work
-
-RUN wget http://mirrors.jenkins-ci.org/war/latest/jenkins.war
-
-ENV NODE_VERSION 0.12.0
-RUN wget http://assets.hypriot.com/node-v${NODE_VERSION}-linux-armv6hf.tar.gz 
-RUN cd /usr/local && \
-    tar --strip-components 1 -xzf /var/jenkins_work/node-v${NODE_VERSION}-linux-armv6hf.tar.gz &&\
-    rm -rf /var/jenkins_work/node-v${NODE_VERSION}-linux-armv6hf.tar.gz   
- 
-RUN npm update && \
-    npm install -g grunt grunt-cli
+# Make sure we don't get notifications we can't answer during building.
+ENV    DEBIAN_FRONTEND noninteractive
 
 
-WORKDIR /var/jenkins_work
-RUN wget https://github.com/piksel/phantomjs-raspberrypi/archive/master.zip 
-RUN unzip master.zip
-RUN mv phantomjs-raspberrypi-master/bin/phantomjs /usr/local/bin/phantomjs
-RUN rm -rf phantomjs-raspberrypi-master
-RUN chmod +x /usr/local/bin/phantomjs
-ENV PHANTOMJS_BIN=/usr/local/bin/phantomjs
+# Get system up to date to start with.
+RUN    apt-get update; apt-get --yes upgrade; apt-get --yes install \
+       apt-transport-https \
+       ca-certificates \
+       curl \
+       gnupg2 \
+       software-properties-common \ 
+       libapparmor-dev
 
-USER root
-RUN apt-get install -y build-essential
 
-#install python - docker-compose has some dependencies
-RUN wget https://bootstrap.pypa.io/get-pip.py
-RUN python get-pip.py
-RUN pip install jsonschema
+# The special trick here is to download and install the Oracle Java 8 installer from Launchpad.net
+RUN echo "deb http://ppa.launchpad.net/webupd8team/java/ubuntu trusty main" | tee /etc/apt/sources.list.d/webupd8team-java.list && \
+    echo "deb-src http://ppa.launchpad.net/webupd8team/java/ubuntu trusty main" | tee -a /etc/apt/sources.list.d/webupd8team-java.list && \
+    apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys EEA14886
 
-RUN pip install docker-compose
+# Setup docker repo
+RUN curl -fsSL https://download.docker.com/linux/debian/gpg | sudo apt-key add - && \
+    echo "deb [arch=armhf] https://download.docker.com/linux/debian \
+    $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
 
-#shipwright
-RUN pip install shipwright
+# Make sure the Oracle Java 8 license is pre-accepted, and install Java 8 + Docker
+RUN    echo debconf shared/accepted-oracle-license-v1-1 select true | debconf-set-selections  && \
+       echo debconf shared/accepted-oracle-license-v1-1 seen true | debconf-set-selections  && \
+       apt-get update && \
+       apt-get --yes install oracle-java8-installer docker-ce ; apt-get clean
 
-RUN usermod -a -G root jenkins
-WORKDIR /var/jenkins_home
-#USER jenkins
-ENV JENKINS_HOME=/var/jenkins_home
-CMD java -jar /var/jenkins_work/jenkins.war
+ENV JENKINS_HOME /usr/local/jenkins
+ENV JENKINS_SLAVE_AGENT_PORT 50000
+
+RUN mkdir -p /usr/local/jenkins
+RUN useradd --no-create-home --shell /bin/sh jenkins 
+RUN chown -R jenkins:jenkins /usr/local/jenkins/
+ADD http://mirrors.jenkins-ci.org/war-stable/latest/jenkins.war /usr/local/jenkins.war
+RUN chmod 644 /usr/local/jenkins.war
+
+ENTRYPOINT ["/usr/bin/java", "-jar", "/usr/local/jenkins.war"]
+
+# for main web interface:
+EXPOSE 8080
+
+# will be used by attached slave agents:
+EXPOSE 50000
+
+CMD [""]
